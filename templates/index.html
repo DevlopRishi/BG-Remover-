@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Background Remover Web App</title>
+  <style>
+    #canvasContainer {
+      position: relative;
+      display: inline-block;
+    }
+    #bgCanvas, #overlayCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #overlayCanvas {
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <h1>Background Remover Web App</h1>
+  <input type="file" id="fileInput" accept="image/*">
+  <br><br>
+  <div id="canvasContainer">
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+  <br>
+  <div>
+    Brush Size:
+    <input type="range" id="brushSize" min="1" max="50" value="10">
+    Opacity:
+    <input type="range" id="opacity" min="0" max="1" step="0.1" value="0.5">
+    Hardness:
+    <input type="range" id="hardness" min="0" max="1" step="0.1" value="1">
+    <button id="eraserToggle">Toggle Eraser</button>
+  </div>
+  <br>
+  <button id="autoBtn">Auto Remove Background</button>
+  <button id="manualBtn">Apply Manual Mask</button>
+  <br><br>
+  <div>
+    <h3>Result:</h3>
+    <img id="resultImg" alt="Processed image will appear here">
+  </div>
+
+  <script>
+    // Get references to the DOM elements.
+    let bgCanvas = document.getElementById('bgCanvas');
+    let overlayCanvas = document.getElementById('overlayCanvas');
+    let fileInput = document.getElementById('fileInput');
+    let autoBtn = document.getElementById('autoBtn');
+    let manualBtn = document.getElementById('manualBtn');
+    let resultImg = document.getElementById('resultImg');
+    let brushSizeSlider = document.getElementById('brushSize');
+    let opacitySlider = document.getElementById('opacity');
+    let hardnessSlider = document.getElementById('hardness');
+    let eraserToggleBtn = document.getElementById('eraserToggle');
+
+    let drawing = false;
+    let isEraser = false;
+    let lastPos = {x: 0, y: 0};
+
+    let bgCtx = bgCanvas.getContext('2d');
+    let overlayCtx = overlayCanvas.getContext('2d');
+
+    // Load the image when selected.
+    fileInput.addEventListener('change', function(e) {
+      let file = e.target.files[0];
+      let reader = new FileReader();
+      reader.onload = function(event) {
+        let img = new Image();
+        img.onload = function() {
+          bgCanvas.width = img.width;
+          bgCanvas.height = img.height;
+          overlayCanvas.width = img.width;
+          overlayCanvas.height = img.height;
+          bgCtx.drawImage(img, 0, 0);
+          overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+        img.src = event.target.result;
+      }
+      reader.readAsDataURL(file);
+    });
+
+    // Utility: Get mouse coordinates relative to a canvas.
+    function getMousePos(canvas, evt) {
+      let rect = canvas.getBoundingClientRect();
+      return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+      };
+    }
+
+    // Drawing on the overlay canvas.
+    overlayCanvas.addEventListener('mousedown', function(e) {
+      drawing = true;
+      lastPos = getMousePos(overlayCanvas, e);
+    });
+    overlayCanvas.addEventListener('mousemove', function(e) {
+      if (!drawing) return;
+      let pos = getMousePos(overlayCanvas, e);
+      drawLine(lastPos, pos);
+      lastPos = pos;
+    });
+    overlayCanvas.addEventListener('mouseup', function() { drawing = false; });
+    overlayCanvas.addEventListener('mouseleave', function() { drawing = false; });
+
+    function drawLine(from, to) {
+      overlayCtx.lineCap = 'round';
+      overlayCtx.lineJoin = 'round';
+      overlayCtx.lineWidth = brushSizeSlider.value;
+      let opacity = opacitySlider.value;
+      // The "hardness" parameter is not fully implemented here.
+      if (isEraser) {
+        overlayCtx.globalCompositeOperation = 'destination-out';
+        overlayCtx.strokeStyle = 'rgba(0,0,0,1)';
+      } else {
+        overlayCtx.globalCompositeOperation = 'source-over';
+        overlayCtx.strokeStyle = `rgba(255,0,0,${opacity})`;  // red indicates foreground.
+      }
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(from.x, from.y);
+      overlayCtx.lineTo(to.x, to.y);
+      overlayCtx.stroke();
+      overlayCtx.closePath();
+    }
+
+    // Toggle eraser mode.
+    eraserToggleBtn.addEventListener('click', function(){
+      isEraser = !isEraser;
+      eraserToggleBtn.textContent = isEraser ? 'Eraser On' : 'Eraser Off';
+    });
+
+    // Send the original image for automatic background removal.
+    autoBtn.addEventListener('click', function(){
+      let dataURL = bgCanvas.toDataURL('image/png');
+      fetch('/process_auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataURL })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if(data.result){
+          resultImg.src = data.result;
+        }
+      });
+    });
+
+    // Send both the original image and the manual mask for processing.
+    manualBtn.addEventListener('click', function(){
+      let imageDataURL = bgCanvas.toDataURL('image/png');
+      let maskDataURL = overlayCanvas.toDataURL('image/png');
+      fetch('/process_manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageDataURL, mask: maskDataURL })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if(data.result){
+          resultImg.src = data.result;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
