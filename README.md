@@ -97,12 +97,7 @@ BG-Remover/
    The processed image will be displayed below the controls.
 
 ## Future Improvements
-
-- Implement a more advanced hardness setting for brush strokes.
-- Allow users to specify separate markings for foreground and background.
-- Add undo/redo functionality for manual corrections.
-- Improve error handling and user feedback.
-- Deploy the application on a production server.
+- I don't know 
 
 ## License
 
